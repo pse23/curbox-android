@@ -77,6 +77,40 @@
                 android:textAppearance="@style/TextAppearance.Material3.LabelMedium"
                 android:textColor="?attr/colorOnSurfaceVariant" />
 
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/chips_presets"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chip_preset_social"
+                    style="@style/Widget.Material3.Chip.Assist"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/preset_social" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chip_preset_games"
+                    style="@style/Widget.Material3.Chip.Assist"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/preset_games" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chip_preset_video"
+                    style="@style/Widget.Material3.Chip.Assist"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/preset_video" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/chip_preset_news"
+                    style="@style/Widget.Material3.Chip.Assist"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/preset_news" />
+            </com.google.android.material.chip.ChipGroup>
+
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_select_apps"
                 android:layout_width="match_parent"
@@ -121,6 +155,14 @@
                 app:cornerRadius="16dp"
                 app:icon="@drawable/ic_reducers"
                 app:iconTint="?attr/colorOnSurfaceVariant" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingTop="4dp"
+                android:text="@string/usage_limit_help"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="13sp" />
 
             <TextView
                 android:id="@+id/textView3"

@@ -29,6 +29,7 @@ import neth.iecal.curbox.CrashLogger
 import neth.iecal.curbox.Constants
 import neth.iecal.curbox.nfc.NfcUnlockUtils
 import neth.iecal.curbox.R
+import neth.iecal.curbox.ui.fragments.main.reducers.blockertools.appBlocker.appGroupScheduleSummary
 import neth.iecal.curbox.api.ApiAuthStore
 import neth.iecal.curbox.api.ApiRestrictionPolicy
 import neth.iecal.curbox.api.ExternalUnlockAttempt
@@ -185,10 +186,23 @@ class WarningActivity : AppCompatActivity() {
 
         val mode = intent.getIntExtra("mode", 0)
 
-        val warningScreenConfig = Gson().fromJson<AppBlockerWarningScreenConfig>(
+        val requestedWarningConfig = Gson().fromJson<AppBlockerWarningScreenConfig>(
             intent.getStringExtra("warning_config"),
             AppBlockerWarningScreenConfig::class.java
         )
+        val liveSettings = runCatching {
+            kotlinx.coroutines.runBlocking {
+                neth.iecal.curbox.utils.DataStoreManager(applicationContext).settings.first()
+            }
+        }.getOrNull()
+        val strictBlocksUnlock = liveSettings?.strictModeConfig?.let {
+            it.blockUnlocks && it.isLocked(System.currentTimeMillis())
+        } == true
+        val warningScreenConfig = if (strictBlocksUnlock) {
+            requestedWarningConfig.copy(isProceedDisabled = true)
+        } else {
+            requestedWarningConfig
+        }
 
         externalCondition = warningScreenConfig.externalUnlockCondition
         externalWarningConfig = warningScreenConfig
@@ -229,6 +243,9 @@ class WarningActivity : AppCompatActivity() {
         }
 
         binding = DialogWarningOverlayBinding.inflate(layoutInflater)
+        val blockReason = blockReasonText(mode, targetId, liveSettings, strictBlocksUnlock)
+        binding.blockReason.text = blockReason
+        binding.blockReason.visibility = if (blockReason.isEmpty()) View.GONE else View.VISIBLE
         isFocusGoalRequired = warningScreenConfig.isFocusGoalRequirementEnabled
         isFocusGoalVerified = !isFocusGoalRequired
         if (isFocusGoalRequired &&
@@ -553,6 +570,44 @@ class WarningActivity : AppCompatActivity() {
     }
 
     /** Unlocks in a row without the user backing out. Strong cravings show up as long streaks. */
+    /** Says which block triggered this screen and when that block applies. */
+    private fun blockReasonText(
+        mode: Int,
+        targetId: String,
+        settings: neth.iecal.curbox.data.models.Settings?,
+        strictBlocksUnlock: Boolean
+    ): String {
+        val lines = mutableListOf<String>()
+        try {
+            when (mode) {
+                Constants.WARNING_SCREEN_MODE_APP_BLOCKER ->
+                    settings?.blockedAppGroups?.firstOrNull { it.id == targetId }?.let { group ->
+                        val schedule = group.config?.schedule ?: return@let
+                        lines += getString(
+                            R.string.block_reason_group,
+                            group.name,
+                            appGroupScheduleSummary(schedule)
+                        )
+                    }
+                Constants.WARNING_SCREEN_MODE_KEYWORD_BLOCKER ->
+                    settings?.keywordBlockerConfig?.keywordGroups
+                        ?.firstOrNull { it.id == targetId }?.let { group ->
+                            val schedule = group.config?.schedule ?: return@let
+                            lines += getString(
+                                R.string.block_reason_group,
+                                group.name,
+                                appGroupScheduleSummary(schedule)
+                            )
+                        }
+                Constants.WARNING_SCREEN_MODE_VIEW_BLOCKER ->
+                    lines += getString(R.string.block_reason_reels)
+            }
+        } catch (_: Exception) {
+        }
+        if (strictBlocksUnlock) lines += getString(R.string.block_reason_strict)
+        return lines.joinToString("\n")
+    }
+
     private fun unlockStreak(): Int =
         getSharedPreferences(URGE_SURF_PREFS, Context.MODE_PRIVATE).getInt(KEY_UNLOCK_STREAK, 0)
 

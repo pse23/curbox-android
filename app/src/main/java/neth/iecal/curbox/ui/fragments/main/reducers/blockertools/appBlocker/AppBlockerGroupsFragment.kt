@@ -115,9 +115,10 @@ class AppBlockerGroupsFragment : Fragment() {
 
             holder.tvDetails.text = group.config?.let { config ->
                 getString(
-                    R.string.group_details_apps,
+                    R.string.group_details_full,
                     group.selectedPackages.size,
-                    requireContext().appGroupScheduleSummary(config.schedule)
+                    requireContext().appGroupScheduleSummary(config.schedule),
+                    requireContext().appGroupUsageSummary(config.usage)
                 )
             } ?: getString(R.string.group_details_apps_only, group.selectedPackages.size)
 
@@ -190,6 +191,13 @@ class AppBlockerGroupsFragment : Fragment() {
                     } else {
                         viewModel.updateGroupActiveState(pos, true)
                     }
+                } else if (!isChecked && group.isActive && viewModel.strictModeConfig.value.isLocked(System.currentTimeMillis())) {
+                    holder.switchActive.setOnCheckedChangeListener(null)
+                    holder.switchActive.isChecked = true
+                    holder.switchActive.post {
+                        if (pos in 0 until itemCount) notifyItemChanged(pos)
+                    }
+                    android.widget.Toast.makeText(requireContext(), R.string.strict_mode_blocked_toast, android.widget.Toast.LENGTH_LONG).show()
                 } else if (!isChecked &&
                     group.isActive &&
                     viewModel.temporaryDisableAvailable.value

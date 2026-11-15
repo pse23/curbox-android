@@ -126,8 +126,14 @@ class KeywordBlockerFragment : Fragment() {
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val group = getItem(position)
             holder.tvName.text = group.name
-            holder.tvDetails.text =
+            val keywordCount =
                 getString(R.string.group_details_keywords_only, group.selectedKeywords.size)
+            holder.tvDetails.text = group.config?.let { config ->
+                with(neth.iecal.curbox.ui.fragments.main.reducers.blockertools.appBlocker.AppGroupUiTextBridge) {
+                    keywordCount + " • " + scheduleSummary(requireContext(), config.schedule) +
+                        " • " + usageSummary(requireContext(), config.usage)
+                }
+            } ?: keywordCount
 
             holder.tvRemaining.visibility = View.GONE
             holder.tvRemaining.tag = group.id
@@ -168,7 +174,14 @@ class KeywordBlockerFragment : Fragment() {
             holder.switchActive.isChecked = group.isActive
             holder.switchActive.setOnCheckedChangeListener { _, isChecked ->
                 val pos = holder.adapterPosition
-                if (!isChecked && group.isActive && viewModel.temporaryDisableAvailable.value) {
+                if (!isChecked && group.isActive && viewModel.strictModeConfig.value.isLocked(System.currentTimeMillis())) {
+                    holder.switchActive.setOnCheckedChangeListener(null)
+                    holder.switchActive.isChecked = true
+                    holder.switchActive.post {
+                        if (pos in 0 until itemCount) notifyItemChanged(pos)
+                    }
+                    android.widget.Toast.makeText(requireContext(), R.string.strict_mode_blocked_toast, Toast.LENGTH_LONG).show()
+                } else if (!isChecked && group.isActive && viewModel.temporaryDisableAvailable.value) {
                     holder.switchActive.setOnCheckedChangeListener(null)
                     holder.switchActive.isChecked = true
                     holder.switchActive.post {

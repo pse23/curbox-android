@@ -61,6 +61,8 @@ class AppBlockerSettingViewModel(application: Application) : AndroidViewModel(ap
     val groups: StateFlow<List<AppGroup>> = _groups
     private val _temporaryDisableAvailable = MutableStateFlow(true)
     val temporaryDisableAvailable: StateFlow<Boolean> = _temporaryDisableAvailable
+    private val _strictModeConfig = MutableStateFlow(neth.iecal.curbox.data.models.StrictModeConfig())
+    val strictModeConfig: StateFlow<neth.iecal.curbox.data.models.StrictModeConfig> = _strictModeConfig
     init {
         viewModelScope.launch {
             dataStoreManager.settingsForEditing.collectLatest { settings ->
@@ -70,6 +72,7 @@ class AppBlockerSettingViewModel(application: Application) : AndroidViewModel(ap
         viewModelScope.launch {
             // This escape hatch must not become usable while enabling it is still pending.
             dataStoreManager.settings.collectLatest { settings ->
+                _strictModeConfig.value = settings.strictModeConfig
                 _temporaryDisableAvailable.value =
                     !settings.settingsChangeDelayConfig2.isEnabled &&
                     !settings.settingsChangeDelayConfig2.requireTamperProtectionOff

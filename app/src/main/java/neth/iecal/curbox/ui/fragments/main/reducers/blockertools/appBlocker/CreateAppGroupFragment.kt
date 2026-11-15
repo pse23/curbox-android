@@ -55,6 +55,31 @@ class CreateAppGroupFragment : Fragment() {
 
     private var isDeleting = false
 
+    /** Adds every installed launcher app in an Android app category to the selection. */
+    private fun applyPreset(category: Int, nameRes: Int) {
+        val context = requireContext()
+        val launcher = android.content.Intent(android.content.Intent.ACTION_MAIN)
+            .addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+        val matches = try {
+            context.packageManager.queryIntentActivities(launcher, 0)
+                .mapNotNull { it.activityInfo?.applicationInfo }
+                .filter { it.category == category && it.packageName != context.packageName }
+                .map { it.packageName }
+                .distinct()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        if (matches.isEmpty()) {
+            Toast.makeText(context, R.string.preset_none_found, Toast.LENGTH_SHORT).show()
+            return
+        }
+        selectedApps = ArrayList((selectedApps + matches).distinct())
+        updateSelectAppsButton()
+        if (binding.etGroupName.text.isNullOrBlank()) {
+            binding.etGroupName.setText(nameRes)
+        }
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
@@ -110,6 +135,19 @@ class CreateAppGroupFragment : Fragment() {
         }
 
         binding.btnSelectApps.setOnClickListener { openAppSelector() }
+        binding.chipsPresets.visibility = if (groupId == null) View.VISIBLE else View.GONE
+        binding.chipPresetSocial.setOnClickListener {
+            applyPreset(android.content.pm.ApplicationInfo.CATEGORY_SOCIAL, R.string.preset_social)
+        }
+        binding.chipPresetGames.setOnClickListener {
+            applyPreset(android.content.pm.ApplicationInfo.CATEGORY_GAME, R.string.preset_games)
+        }
+        binding.chipPresetVideo.setOnClickListener {
+            applyPreset(android.content.pm.ApplicationInfo.CATEGORY_VIDEO, R.string.preset_video)
+        }
+        binding.chipPresetNews.setOnClickListener {
+            applyPreset(android.content.pm.ApplicationInfo.CATEGORY_NEWS, R.string.preset_news)
+        }
 
         binding.btnConfigureSchedule.setOnClickListener { openScheduleEditor() }
         binding.btnConfigureUsage.setOnClickListener { openUsageEditor() }

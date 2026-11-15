@@ -29,6 +29,9 @@ jobs:
           gradle-version: wrapper
           arguments: clean
 
+      - name: Run unit tests
+        run: ./gradlew testFdroidDebugUnitTest
+
       - name: Build Fdroid Debug APK
         run: ./gradlew assembleFdroidDebug
 

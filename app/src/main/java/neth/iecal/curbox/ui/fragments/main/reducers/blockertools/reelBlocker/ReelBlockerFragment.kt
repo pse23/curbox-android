@@ -57,7 +57,12 @@ class ReelBlockerFragment : Fragment() {
         binding.switchEnableBlocker.setOnCheckedChangeListener { _, isChecked ->
             if (!isUpdatingUi) {
                 val config = viewModel.reelBlockerConfig.value
-                if (!isChecked && config.isActive && viewModel.temporaryDisableAvailable.value) {
+                if (!isChecked && config.isActive && viewModel.strictModeConfig.value.isLocked(System.currentTimeMillis())) {
+                    isUpdatingUi = true
+                    binding.switchEnableBlocker.isChecked = true
+                    isUpdatingUi = false
+                    android.widget.Toast.makeText(requireContext(), R.string.strict_mode_blocked_toast, android.widget.Toast.LENGTH_LONG).show()
+                } else if (!isChecked && config.isActive && viewModel.temporaryDisableAvailable.value) {
                     isUpdatingUi = true
                     binding.switchEnableBlocker.isChecked = true
                     isUpdatingUi = false

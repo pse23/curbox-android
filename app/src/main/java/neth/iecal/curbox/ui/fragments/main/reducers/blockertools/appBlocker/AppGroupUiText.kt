@@ -4,6 +4,7 @@ import android.content.Context
 import android.text.format.DateFormat
 import neth.iecal.curbox.R
 import neth.iecal.curbox.data.models.AppTimeConfig
+import neth.iecal.curbox.data.models.AppUsageConfig
 import neth.iecal.curbox.data.models.TimeInterval
 import neth.iecal.curbox.utils.AppGroupScheduleConflict
 import neth.iecal.curbox.utils.isAllDaySchedule
@@ -33,6 +34,12 @@ fun Context.appGroupScheduleSummary(config: AppTimeConfig): String {
     }
 
     return getString(R.string.schedule_summary_custom)
+}
+
+fun Context.appGroupUsageSummary(usage: AppUsageConfig): String = when {
+    !usage.isDailyUniform -> getString(R.string.usage_summary_varies)
+    usage.uniformLimit <= 0L -> getString(R.string.usage_summary_none)
+    else -> getString(R.string.usage_summary_minutes, usage.uniformLimit)
 }
 
 fun Context.appGroupConflictMessage(conflicts: List<AppGroupScheduleConflict>): String {
@@ -79,4 +86,13 @@ private fun Context.applicationLabel(packageName: String): String {
     } catch (_: Exception) {
         packageName
     }
+}
+
+/** Lets other packages build the same summary line without importing the extensions. */
+object AppGroupUiTextBridge {
+    fun scheduleSummary(context: Context, config: AppTimeConfig): String =
+        context.appGroupScheduleSummary(config)
+
+    fun usageSummary(context: Context, usage: AppUsageConfig): String =
+        context.appGroupUsageSummary(usage)
 }

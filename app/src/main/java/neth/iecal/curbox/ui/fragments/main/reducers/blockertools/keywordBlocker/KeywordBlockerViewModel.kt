@@ -31,6 +31,8 @@ class KeywordBlockerViewModel(application: Application) : AndroidViewModel(appli
     val keywordBlockerConfig: StateFlow<KeywordBlocker> = _keywordBlockerConfig
     private val _temporaryDisableAvailable = MutableStateFlow(true)
     val temporaryDisableAvailable: StateFlow<Boolean> = _temporaryDisableAvailable
+    private val _strictModeConfig = MutableStateFlow(neth.iecal.curbox.data.models.StrictModeConfig())
+    val strictModeConfig: StateFlow<neth.iecal.curbox.data.models.StrictModeConfig> = _strictModeConfig
 
     var currentUsageConfig = AppUsageConfig()
     var currentTimeConfig = AppTimeConfig.allDay()
@@ -81,6 +83,7 @@ class KeywordBlockerViewModel(application: Application) : AndroidViewModel(appli
         }
         viewModelScope.launch {
             dataStoreManager.settings.collectLatest { settings ->
+                _strictModeConfig.value = settings.strictModeConfig
                 _temporaryDisableAvailable.value = !settings.settingsChangeDelayConfig2.isEnabled &&
                     !settings.settingsChangeDelayConfig2.requireTamperProtectionOff
             }

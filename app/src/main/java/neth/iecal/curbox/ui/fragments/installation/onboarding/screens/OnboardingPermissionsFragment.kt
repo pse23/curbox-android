@@ -138,6 +138,14 @@ class OnboardingPermissionsFragment : Fragment() {
             }
         }
 
+        binding.batteryPermRoot.setOnClickListener {
+            runCatching {
+                startActivity(
+                    neth.iecal.curbox.utils.ServiceProtectionManager
+                        .ignoreBatteryOptimizationsIntent(requireContext())
+                )
+            }
+        }
         binding.notifPermRoot.setOnClickListener {
             if (neth.iecal.curbox.utils.PermissionUtils.isNotificationPermissionGiven(requireContext())) return@setOnClickListener
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -397,6 +405,12 @@ class OnboardingPermissionsFragment : Fragment() {
         setPermissionIcon(hasOverlay, binding.overlayPermIcon)
         setPermissionIcon(hasNotif, binding.notifPermIcon)
         setPermissionIcon(hasBlocker, binding.blockerAccPermIcon)
+        // Shown as a pass or fail check. It does not gate setup, because some phones never
+        // report this as granted.
+        val hasBattery = neth.iecal.curbox.utils.ServiceProtectionManager
+            .isIgnoringBatteryOptimizations(requireContext())
+        setPermissionIcon(hasBattery, binding.batteryPermIcon)
+        binding.batteryPermRoot.alpha = if (hasBattery) 0.5f else 1.0f
 
         // Enforce Sequence
         binding.overlayPermRoot.isEnabled = !hasOverlay

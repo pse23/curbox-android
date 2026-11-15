@@ -27,6 +27,8 @@ import neth.iecal.curbox.data.models.PomodoroState
 import neth.iecal.curbox.data.models.Settings
 import neth.iecal.curbox.data.models.SettingsChangeDelayConfig
 import neth.iecal.curbox.data.models.SettingsChangeDelayPrefs
+import neth.iecal.curbox.data.models.StrictModeConfig
+import neth.iecal.curbox.data.models.StrictModeUnlockMethod
 import neth.iecal.curbox.data.models.upgradeLegacyAppGroupConfigs
 import neth.iecal.curbox.data.models.upgradeLegacyKeywordGroupConfigs
 import neth.iecal.curbox.data.models.upgradeLegacyConfig
@@ -309,7 +311,10 @@ class DataStoreManager(private val context: Context) {
                 nextWebsiteRecheckTime = current.nextWebsiteRecheckTime,
                 externalUnlockConditions = current.externalUnlockConditions,
                 settingsChangeDelayConfig2 = delayConfig,
+                // A lock started on this device can only end on this device.
+                strictModeConfig = current.strictModeConfig,
             )
+            val strictLocked = current.strictModeConfig.isLocked(System.currentTimeMillis())
 
             for (field in GatedSettingsField.values()) {
                 val newValueJson = syncedFieldValueJson(remoteWithLocalRuntime, field) ?: continue
@@ -318,6 +323,7 @@ class DataStoreManager(private val context: Context) {
                 if (existingPending?.newValueJson == newValueJson) continue
 
                 val proposed = withFieldValue(updated, field, newValueJson) ?: continue
+                if (strictLocked && !RestrictionComparator.isSameOrStricter(field, current, proposed)) continue
                 if ((!timeGateActive && !tamperGated) ||
                     RestrictionComparator.isSameOrStricter(field, current, proposed)
                 ) {
@@ -516,13 +522,60 @@ class DataStoreManager(private val context: Context) {
         }
     }
 
+    /**
+     * Turns Strict Mode on, or extends a running timer. While it is locked the only accepted
+     * change is a later timer deadline, so the lock can never be loosened through this call.
+     */
+    suspend fun startStrictMode(
+        method: StrictModeUnlockMethod,
+        durationMinutes: Long,
+        blockUnlocks: Boolean = false
+    ): Boolean {
+        var started = false
+        settingsDataStore.updateData { current ->
+            val now = System.currentTimeMillis()
+            val existing = current.strictModeConfig
+            val untilMs = if (method == StrictModeUnlockMethod.TIMER) {
+                now + durationMinutes.coerceIn(1L, StrictModeConfig.MAX_LOCK_MINUTES) * 60_000L
+            } else 0L
+            val allowed = !existing.isLocked(now) ||
+                (existing.unlockMethod == StrictModeUnlockMethod.TIMER &&
+                    method == StrictModeUnlockMethod.TIMER &&
+                    untilMs >= existing.lockedUntilMs)
+            started = allowed
+            if (!allowed) current else current.copy(
+                strictModeConfig = StrictModeConfig(
+                    isEnabled = true,
+                    unlockMethod = method,
+                    lockedUntilMs = untilMs,
+                    // Extending a lock can add this restriction but never remove it.
+                    blockUnlocks = blockUnlocks || (existing.isLocked(now) && existing.blockUnlocks)
+                )
+            )
+        }
+        return started
+    }
+
+    /** Turns Strict Mode off if its unlock method allows it right now. */
+    suspend fun stopStrictMode(isCharging: Boolean): Boolean {
+        var stopped = false
+        settingsDataStore.updateData { current ->
+            stopped = current.strictModeConfig.canTurnOff(System.currentTimeMillis(), isCharging)
+            if (!stopped) current else current.copy(strictModeConfig = StrictModeConfig())
+        }
+        // The lock held back any waiting change; release what is already due.
+        if (stopped) applyDuePendingChanges()
+        return stopped
+    }
+
     suspend fun temporarilyDisableAppGroup(groupId: String, durationMinutes: Long): Boolean {
         val untilMs = temporaryDisableDeadline(durationMinutes)
         var changed = false
         var nextDeadline: Long? = null
         settingsDataStore.updateData { current ->
             if (current.settingsChangeDelayConfig2.isEnabled ||
-                current.settingsChangeDelayConfig2.requireTamperProtectionOff) return@updateData current
+                current.settingsChangeDelayConfig2.requireTamperProtectionOff ||
+                current.strictModeConfig.isLocked(System.currentTimeMillis())) return@updateData current
             val groups = current.blockedAppGroups.map { group ->
                 if (group.id == groupId && group.isActive) {
                     changed = true
@@ -547,7 +600,8 @@ class DataStoreManager(private val context: Context) {
         var nextDeadline: Long? = null
         settingsDataStore.updateData { current ->
             if (current.settingsChangeDelayConfig2.isEnabled ||
-                current.settingsChangeDelayConfig2.requireTamperProtectionOff) return@updateData current
+                current.settingsChangeDelayConfig2.requireTamperProtectionOff ||
+                current.strictModeConfig.isLocked(System.currentTimeMillis())) return@updateData current
             val config = current.keywordBlockerConfig
             val groups = config.keywordGroups.map { group ->
                 if (group.id == groupId && group.isActive) {
@@ -570,6 +624,7 @@ class DataStoreManager(private val context: Context) {
         settingsDataStore.updateData { current ->
             if (current.settingsChangeDelayConfig2.isEnabled ||
                 current.settingsChangeDelayConfig2.requireTamperProtectionOff ||
+                current.strictModeConfig.isLocked(System.currentTimeMillis()) ||
                 !current.reelBlockerConfig.isActive
             ) return@updateData current
             changed = true
@@ -650,8 +705,9 @@ class DataStoreManager(private val context: Context) {
             // Tamper protection being on holds every pending change back, no matter how long
             // its own timer has already run out, until the user turns tamper protection off
             val tamperBlocked = delayConfig.requireTamperProtectionOff && current.antiUninstallConfig2.isEnabled
+            val strictLocked = current.strictModeConfig.isLocked(now)
             val (due, waiting) = delayConfig.pendingChanges
-                .partition { it.appliesAtMs <= now && !tamperBlocked }
+                .partition { it.appliesAtMs <= now && !tamperBlocked && !strictLocked }
             appliedAny = due.isNotEmpty()
             if (due.isEmpty()) {
                 current
@@ -680,13 +736,22 @@ class DataStoreManager(private val context: Context) {
         var hadPendingForField = false
         var tamperGated = false
         var unchangedPending = false
+        var blockedByStrictMode = false
         settingsDataStore.updateData { current ->
+            blockedByStrictMode = false
             deferredUntilMs = 0L
             hadPendingForField = false
             tamperGated = false
             unchangedPending = false
             val newValueJson = gson.toJson(computeNewValue(overlayPendingChanges(current)))
             val proposed = withFieldValue(current, field, newValueJson) ?: return@updateData current
+            // Strict Mode refuses a weaker value outright; it is never parked for later.
+            if (current.strictModeConfig.isLocked(System.currentTimeMillis()) &&
+                !RestrictionComparator.isSameOrStricter(field, current, proposed)
+            ) {
+                blockedByStrictMode = true
+                return@updateData current
+            }
             val delayConfig = current.settingsChangeDelayConfig2
             val existingPending = delayConfig.pendingChanges.find { it.field == field.name }
             hadPendingForField = existingPending != null
@@ -722,6 +787,10 @@ class DataStoreManager(private val context: Context) {
             }
         }
         schedulePendingChanges()
+        if (blockedByStrictMode) {
+            notifyBlockedByStrictMode()
+            return@withContext
+        }
         if (unchangedPending) {
             return@withContext
         } else if (deferredUntilMs > 0L) {
@@ -872,6 +941,16 @@ class DataStoreManager(private val context: Context) {
                     Toast.makeText(appContext, message, Toast.LENGTH_LONG).show()
                 } catch (_: Exception) {
                 }
+            }
+        }
+    }
+
+    private fun notifyBlockedByStrictMode() {
+        val appContext = context.applicationContext
+        Handler(Looper.getMainLooper()).post {
+            try {
+                Toast.makeText(appContext, R.string.strict_mode_blocked_toast, Toast.LENGTH_LONG).show()
+            } catch (_: Exception) {
             }
         }
     }
