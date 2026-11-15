@@ -1,6 +1,8 @@
 name: Debug CI
 
 on:
+  push:
+    branches: [ "kt-rewrite", "strict-mode" ]
   workflow_dispatch: # Manual trigger
 
 jobs:
@@ -26,6 +28,9 @@ jobs:
         with:
           gradle-version: wrapper
           arguments: clean
+
+      - name: Run unit tests
+        run: ./gradlew testFdroidDebugUnitTest
 
       - name: Build Fdroid Debug APK
         run: ./gradlew assembleFdroidDebug
